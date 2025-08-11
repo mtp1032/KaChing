@@ -60,8 +60,7 @@ end
 
 if core:debuggingIsEnabled() then
     local fileName = "DebugTools.lua"
-    local info = string.format("%s is loaded", fileName )
-	DEFAULT_CHAT_FRAME:AddMessage( info, 1, 1, 0.5)
+	DEFAULT_CHAT_FRAME:AddMessage( "DebugTools.lua", 1, 1, 0.5)
 end
 
 
