@@ -1,0 +1,53 @@
+name: Build KaChing release zip
+on:
+  push:
+    branches: [ master ]     # or main
+  workflow_dispatch:
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Read version (VERSION file → .toc fallback)
+        id: ver
+        shell: bash
+        run: |
+          set -e
+          VER=""
+          # Prefer VERSION file (e.g., contains: "version": "0.9.9", "build": 241, ...)
+          if [ -f VERSION ]; then
+            VER=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' VERSION | head -n1)
+          fi
+          # Fallback to .toc (## Version: 0.9.9)
+          if [ -z "$VER" ] && [ -f KaChing/KaChing.toc ]; then
+            VER=$(sed -n 's/^##[[:space:]]*Version:[[:space:]]*\(.*\)$/\1/p' KaChing/KaChing.toc | head -n1)
+          fi
+          if [ -z "$VER" ] && [ -f KaChing.toc ]; then
+            VER=$(sed -n 's/^##[[:space:]]*Version:[[:space:]]*\(.*\)$/\1/p' KaChing.toc | head -n1)
+          fi
+          # Last resort
+          if [ -z "$VER" ]; then VER="0.0.0"; fi
+          # Sanitize for filenames (strip spaces and odd chars)
+          VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
+          echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
+          echo "Detected version: $VER"
+
+      - name: Package zip (file name has -master; inside folder is clean KaChing/)  # Recommended
+        run: |
+          git archive --format=zip --prefix=KaChing/ \
+            -o "KaChing-v${ADDON_VER}-master.zip" master
+
+      # If you *really* want the internal folder to be KaChing-master/, use this instead of the step above:
+      # - name: Package zip (file name and inside both have -master)
+      #   run: |
+      #     git archive --format=zip --prefix=KaChing-master/ \
+      #       -o "KaChing-v${ADDON_VER}-master.zip" master
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KaChing-v${{ env.ADDON_VER }}-master.zip
+          path: KaChing-v${{ env.ADDON_VER }}-master.zip
