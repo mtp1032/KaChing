@@ -16,4 +16,15 @@ if LOCALE == "enUS" then
     L["OPT_SELL_WHITE_AW"]   = "Sell white armor & weapons"
     L["TIP_SELL_WHITE_AW"]   = "If checked, all white armor and weapon items will be sold."
 
+    L["EXCL_PLACEHOLDER"]  = "Drag an item here or Shift-Click it…"
+    L["EXCL_PLACEHOLDER"]  = ""
+    L["EXCL_EDIT_TIP"] = "Drag and drop item here to add it to the list of excluded items (for example, your mining pick and/or fishing pole)."
+
+
+    L["EXCL_ADD"]          = "Add"
+    L["EXCL_REMOVE"]       = "Remove"
+
+end
+if DEFAULT_CHAT_FRAME and core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+    DEFAULT_CHAT_FRAME:AddMessage("KaChingLocales.lua (batched build) is loaded", 1, 1, 0.5)
 end
