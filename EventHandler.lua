@@ -67,5 +67,5 @@ frame:SetScript("OnEvent", function()
 end)
 
 if core:debuggingIsEnabled() and DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("EventHandler.lua is loaded", 0, 1, 0)
+    DEFAULT_CHAT_FRAME:AddMessage("EventHandler.lua is loaded", 1, 1, 0.5)
 end
