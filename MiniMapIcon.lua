@@ -1,107 +1,178 @@
 -- MiniMapIcon.lua
--- ORIGINAL DATE: 5 August, 2025
+-- UPDATED: 10 August, 2025 (Classic/TWOW Lua 5.0, draggable, inside/outside rim)
 
 KaChing = KaChing or {}
-KaChing.MiniMapIcon = {}
+KaChing.MiniMapIcon = KaChing.MiniMapIcon or {}
 
-local fileName  = "MiniMapIcon.lua"
-local L         = KaChing.L
-local minimap   = KaChing.MiniMapIcon
-local core      = KaChing.Core
+local minimap  = KaChing.MiniMapIcon
+local core     = KaChing.Core
+local dbg      = KaChing.DebugTools
+local L        = KaChing.L or {}
+local options  = KaChing.OptionsMenu
 
------------- DEBUG TOOL PRESENT IN EVERY FILE -------------------
-local function dbgPrefix(stackTrace)
-    if not stackTrace then
-        stackTrace = debugstack(3, 1, 0)
-    end
+local PI = 3.141592653589793
 
-    -- Grab only the first line
-    local firstLine = core:strsplit("\n", stackTrace, 2)[1] or ""
-
-    -- Parse the line number from the string `Core:93: in ...`
-    local _, _, lineStr = string.find(firstLine, "^[^:]+:(%d+):")
-    local lineNumber = tonumber(lineStr) or 0
-
-    return string.format("[%s:%d] ", fileName, lineNumber)
-end
-local function dbgPrint(...)
-    local prefix = dbgPrefix(debugstack(2))
-    local args = arg or {}  -- in case no args are passed
-
-    local message = prefix
-    for i = 1, table.getn(args) do
-        message = message .. tostring(args[i])
-        if i < table.getn(args) then
-            message = message .. " "
-        end
-    end
-
-    if DEFAULT_CHAT_FRAME then
-        DEFAULT_CHAT_FRAME:AddMessage(message, 1, 1, 0.5)
+local function dprint(msg)
+    if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+        if dbg and dbg.print then dbg:print(msg) end
     end
 end
--- dbgPrint()
--- dbgPrint("Hello", "world")
--- dbgPrint( 123 )
--------------------------------------------------------------------
-function KaChing.MiniMapIcon:Create()
-    local icon = CreateFrame("Button", "KaChingMinimapButton", Minimap)
-    icon:SetFrameStrata("LOW")
-    icon:SetWidth(32)
-    icon:SetHeight(32)
-    icon:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
-    local tex = icon:CreateTexture(nil, "BACKGROUND")
-    tex:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")  -- ID 133785
-    tex:SetAllPoints(icon)
-    icon.texture = tex
+-- Ensure SavedVariables exist + defaults
+local function ensureSV()
+    if type(KaChingDB) ~= "table" then KaChingDB = {} end
+    if type(KaChingDB.minimap) ~= "table" then KaChingDB.minimap = {} end
+    -- Default: place outside the minimap rim so it stands out
+    if KaChingDB.minimap.outside == nil then KaChingDB.minimap.outside = true end
+    if type(KaChingDB.minimap.insideOffset) ~= "number" then KaChingDB.minimap.insideOffset = 10 end
+    if type(KaChingDB.minimap.outsideOffset) ~= "number" then KaChingDB.minimap.outsideOffset = 12 end
+    if type(KaChingDB.minimap.angle) ~= "number" then KaChingDB.minimap.angle = PI / 4 end -- 45°
+end
 
-    icon:SetPoint("TOPLEFT", Minimap, "TOPLEFT", 52, -52)
+-- Compute radius based on inside/outside mode
+local function computeRadius()
+    local half = (Minimap:GetWidth() or 140) / 2
+    ensureSV()
+    if KaChingDB.minimap.outside then
+        return half + KaChingDB.minimap.outsideOffset
+    else
+        return half - KaChingDB.minimap.insideOffset
+    end
+end
 
-icon:SetScript("OnEnter", function(self)
-    dbgPrint("ENTER: Setting tooltip owner")
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+-- Keep button on a circle around the minimap center
+local function placeButtonAtAngle(btn, angle)
+    btn._angle = angle
+    local radius = computeRadius()
+    local x = math.cos(angle) * radius
+    local y = math.sin(angle) * radius
+    btn:ClearAllPoints()
+    btn:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
 
-    dbgPrint("ENTER: Setting text")
-    GameTooltip:SetText("KaChing", 1, 1, 1)
+-- Angle from cursor to minimap center
+local function cursorAngleToMinimap()
+    local mx, my = Minimap:GetCenter()
+    local px, py = GetCursorPosition()
+    local scale = Minimap:GetEffectiveScale() or UIParent:GetEffectiveScale() or 1
+    px = px / scale; py = py / scale
+    return math.atan2(py - my, px - mx)
+end
 
-    dbgPrint("ENTER: Adding lines")
-    GameTooltip:AddLine("Left-Click: Options", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Right-Click: Exclusion List", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Shift+Click: Add/Remove Item", 0.8, 0.8, 0.8)
+-- Handlers (Classic uses 'this' / 'arg1')
+local function OnEnter()
+    if GameTooltip and this then
+        GameTooltip:SetOwner(this, "ANCHOR_LEFT")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText("KaChing", 1, 1, 1)
+        GameTooltip:AddLine(L["MINIMAP_LEFT_CLICK"]  or "Left-Click: Options",         0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["MINIMAP_RIGHT_CLICK"] or "Right-Click: Exclusion List", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["MINIMAP_SHIFT_CLICK"] or "Shift+Click: Add/Remove Item",0.8, 0.8, 0.8)
+        local mode = (KaChingDB and KaChingDB.minimap and KaChingDB.minimap.outside) and "Outside" or "Inside"
+        GameTooltip:AddLine("Drag to move • "..mode, 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end
+end
 
-    dbgPrint("ENTER: Showing tooltip")
-    GameTooltip:Show()
-end)
-    icon:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+local function OnLeave()
+    if GameTooltip then GameTooltip:Hide() end
+end
 
-    icon:SetScript("OnClick", function(self, button)
-        if IsShiftKeyDown() then
-            if button == "LeftButton" then
-                dbgPrint("Shift-Left Click: Insert item into exclusion list")
-                -- TODO: Logic to insert item
-            elseif button == "RightButton" then
-                dbgPrint("Shift-Right Click: Remove item from exclusion list")
-                -- TODO: Logic to remove item
-            end
+local function OnClick()
+    if arg1 == "LeftButton" then
+        options = options or KaChing.OptionsMenu
+        if options and options.Toggle then
+            options:Toggle()
+        elseif options and options.menuCreate then
+            options:menuCreate(); options:Toggle()
         else
-            if button == "LeftButton" then
-                dbgPrint("Left Click: Open options menu")
-                -- TODO: Show options UI
-            elseif button == "RightButton" then
-                dbgPrint("Right Click: Open exclusion list")
-                -- TODO: Show exclusion list UI
-            end
+            dprint("OptionsMenu not ready")
         end
-    end)
-
-    self.icon = icon
+    elseif arg1 == "RightButton" then
+        dprint("Right-click: exclusion list (stub)")
+    end
 end
 
-if core:debuggingIsEnabled() then
-    local info = string.format("%s is loaded", fileName )
-	DEFAULT_CHAT_FRAME:AddMessage( info, 0, 1, 0) 
+-- Drag: hold ALT while releasing to toggle inside/outside quickly (handy!)
+local function OnUpdateDrag()
+    local a = cursorAngleToMinimap()
+    placeButtonAtAngle(this, a)
+end
+
+local function OnDragStart()
+    this:SetScript("OnUpdate", OnUpdateDrag)
+end
+
+local function OnDragStop()
+    this:SetScript("OnUpdate", nil)
+    ensureSV()
+    KaChingDB.minimap.angle = this._angle or (PI / 4)
+
+    -- Optional quick toggle: ALT+drag+release flips inside/outside
+    if IsAltKeyDown and IsAltKeyDown() then
+        KaChingDB.minimap.outside = not KaChingDB.minimap.outside
+        placeButtonAtAngle(this, KaChingDB.minimap.angle)
+        dprint("Minimap icon mode: "..(KaChingDB.minimap.outside and "outside" or "inside"))
+    end
+
+    dprint("Minimap angle saved: "..string.format("%.2f", KaChingDB.minimap.angle))
+end
+
+-- Public helper (if you later want to flip via Options UI)
+function minimap:SetOutsideMode(isOutside)
+    ensureSV()
+    KaChingDB.minimap.outside = (isOutside and true or false)
+    if self.icon then
+        placeButtonAtAngle(self.icon, KaChingDB.minimap.angle or (PI/4))
+    end
+end
+
+function minimap:Create()
+    local existing = getglobal("KaChingMinimapButton")
+    if existing then return existing end
+    if not Minimap then return end
+    ensureSV()
+
+    -- Base button (31x31 = standard)
+    local btn = CreateFrame("Button", "KaChingMinimapButton", Minimap)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetWidth(31); btn:SetHeight(31); btn:SetFrameLevel(8)
+    btn:EnableMouse(true)
+
+    -- Border ring (gives the round look)
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetWidth(54); border:SetHeight(54)
+    border:SetPoint("TOPLEFT", 0, 0)
+
+    -- Icon (cropped)
+    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01") -- 133785
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    icon:SetWidth(20); icon:SetHeight(20)
+    icon:SetPoint("CENTER", 0, 0)
+    btn.icon = icon
+
+    btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+    -- Initial placement
+    placeButtonAtAngle(btn, KaChingDB.minimap.angle or (PI / 4))
+
+    -- Scripts
+    btn:SetScript("OnEnter",     OnEnter)
+    btn:SetScript("OnLeave",     OnLeave)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnClick",     OnClick)
+    btn:RegisterForDrag("LeftButton")
+    btn:SetScript("OnDragStart", OnDragStart)
+    btn:SetScript("OnDragStop",  OnDragStop)
+
+    self.icon = btn
+    dprint("MiniMapIcon created ("..(KaChingDB.minimap.outside and "outside" or "inside")..")")
+    return btn
+end
+
+if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+    DEFAULT_CHAT_FRAME:AddMessage("MiniMapIcon.lua is loaded", 1, 1, 0)
 end
 
