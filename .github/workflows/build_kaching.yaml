@@ -4,6 +4,9 @@ on:
     branches: [ main ]
   workflow_dispatch: {}
 
+permissions:
+  contents: write   # needed so we can create Releases & upload assets
+
 jobs:
   zip:
     runs-on: ubuntu-latest
@@ -42,15 +45,23 @@ jobs:
             -o "KaChing-v${ADDON_VER}-master.zip" HEAD
           ls -l
 
-      # If you want the folder inside to be KaChing-master/ instead, swap the step above with:
-      # - name: Package zip (file & folder have -master)
-      #   run: |
-      #     git archive --format=zip --prefix=KaChing-master/ \
-      #       -o "KaChing-v${ADDON_VER}-master.zip" HEAD
-      #     ls -l
-
-      - name: Upload artifact
+      - name: Upload artifact (for Actions run)
         uses: actions/upload-artifact@v4
         with:
           name: KaChing-v${{ env.ADDON_VER }}-master.zip
-          path: KaChing-v${{ env.ADDON_VER }}-master.zip
+          path: KaChing-v{{ env.ADDON_VER }}-master.zip
+
+      - name: Create GitHub Release (and upload zip)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.ADDON_VER }}
+          name: KaChing v${{ env.ADDON_VER }}
+          body: |
+            KaChing v${{ env.ADDON_VER }} snapshot from branch ${{ github.ref_name }}.
+            - Zip filename: KaChing-v${{ env.ADDON_VER }}-master.zip
+            - Folder inside zip: KaChing/
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          files: KaChing-v${{ env.ADDON_VER }}-master.zip
