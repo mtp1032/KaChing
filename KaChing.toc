@@ -1,9 +1,9 @@
 ## Interface: 11200
 ## -----------------------------------------------------------------------
 ## Title: KaChing
-## Version: 0.1.9
+## Version: 0.2.9
 ## Notes: Supports the bulk sales of items by quality or bound state
-## SavedVariablesPerCharacter: KaChing_ExcludedItemsList, KACHING_SAVED_OPTIONS, KaChingDB
+## SavedVariablesPerCharacter: KaChing_ExcludedItemsList KACHING_SAVED_OPTIONS KaChingDB
 ## 3 August, 2025
 ## OptionalDeps:
 ## IconTexture: 133785
@@ -18,9 +18,22 @@ DebugTools.lua
 KaChingLocales.lua
 Safe.lua
 SellItems.lua
+OptionsMenu.lua
+MiniMapIcon.lua
 EventHandler.lua
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Command.lua
-## OptionsMenu.lua
-## MiniMapIcon.lua
 
 
