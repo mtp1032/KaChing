@@ -1,7 +1,7 @@
 ## Interface: 11200
 ## -----------------------------------------------------------------------
 ## Title: KaChing
-## Version: 0.0.1
+## Version: 0.1.9
 ## Notes: Supports the bulk sales of items by quality or bound state
 ## SavedVariablesPerCharacter: KaChing_ExcludedItemsList, KACHING_SAVED_OPTIONS, KaChingDB
 ## 3 August, 2025
