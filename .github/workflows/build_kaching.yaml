@@ -1,8 +1,7 @@
 name: Build KaChing release zip
 on:
   push:
-    branches: [ master ]     # or main
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   zip:
