@@ -1,20 +1,24 @@
--- MiniMapIcon.lua — KaChing minimap button (Classic/Turtle, Lua 5.0)
--- UPDATED: 11 Aug 2025 (safe SV access + orbit drag + lazy init for Options)
+--------------------------------------------------------------------------------------
+-- MimiMap.lua
+-- ORIGINAL DATE: 4 August, 2025
+
+--[[ PROGRAMMING NOTES:
+Turtle WoW AddOns are implemented in Lua 5.0:
+- No string.match, use string.find or string.gfind
+- No goto or select()
+- _G is not available, use getglobal() or setfenv(0)
+- # is not availble: 
+-   Use table.getn(t) instead of #t
+--  Use modulo instead of x # y
+- Use tinsert(t, v) instead of table.insert(t, v)
+- Can't use 'self.' Must use 'this' instead.
+ ]]
 
 KaChing = KaChing or {}
-KaChing.MiniMapIcon = KaChing.MiniMapIcon or {}
-
-local mm   = KaChing.MiniMapIcon
-local core = KaChing.Core
-local dbg  = KaChing.DebugTools
-local L    = KaChing.L or {}
-
--- ---------- debug helper ----------
-local function dprint(...)
-    if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
-        if dbg and dbg.print then dbg:print(unpack(arg)) end
-    end
-end
+KaChing.MinimapIcon = KaChing.MinimapIcon or {}
+local mm = KaChing.MinimapIcon 
+local dbg = KaChing.DebugTools  -- ??
+local L = KaChing.Locales
 
 -- ---------- SavedVars: safe accessor ----------
 -- Avoid indexing a nil global by always normalizing to a table.
@@ -28,11 +32,11 @@ local function getSV()
 end
 
 -- ---------- Options opener (defense-in-depth) ----------
-local function OpenOptions()
+local function openOptions()
     local opt = KaChing and KaChing.OptionsMenu
     if not opt then
         DEFAULT_CHAT_FRAME:AddMessage("KaChing: Options module not loaded.", 1, 0.3, 0.3)
-        dprint("[MiniMapIcon] OptionsMenu table is nil at click-time")
+        dbg:print("[MinimapIcon] OptionsMenu table is nil at click-time")
         return
     end
 
@@ -46,7 +50,7 @@ local function OpenOptions()
         opt:Toggle()
     else
         DEFAULT_CHAT_FRAME:AddMessage("KaChing: Options menu not available.", 1, 0.3, 0.3)
-        dprint("[MiniMapIcon] OptionsMenu present, but no Toggle()")
+        dbg:print("[MinimapIcon] OptionsMenu present, but no Toggle()")
     end
 end
 
@@ -125,7 +129,7 @@ local function createOnce()
             mm._wasDragging = false
             return
         end
-        OpenOptions()
+        openOptions()
     end)
 
     -- Orbit drag around minimap
@@ -144,14 +148,14 @@ local function createOnce()
     f:Show()
 
     mm.frame = f
-    dprint("[MiniMapIcon] created at "..tostring(sv.minimapAngle).."°")
+    dbg:print("[MinimapIcon] created at "..tostring(sv.minimapAngle).."°")
     return f
 end
 
 -- Public API
-function mm:Create() return createOnce() end
-function mm:Show() createOnce():Show() end
-function mm:Hide() if mm.frame then mm.frame:Hide() end end
+function mm:create() return createOnce() end
+function mm:show() createOnce():Show() end
+function mm:hide() if mm.frame then mm.frame:Hide() end end
 
 -- Auto-create after saved vars load (also re-apply saved angle just in case)
 local ev = CreateFrame("Frame")
@@ -164,3 +168,9 @@ ev:SetScript("OnEvent", function()
         createOnce()
     end
 end)
+
+-- Optional: debug ping so you can see when this file loads
+-- Optional: debug ping so you can see when this file loads
+if KaChing.Core and KaChing.Core.debuggingIsEnabled and KaChing.Core.debuggingIsEnabled() then
+    DEFAULT_CHAT_FRAME:AddMessage("MiniMapIcon.lua loaded", 1, 1, 0.5)
+end

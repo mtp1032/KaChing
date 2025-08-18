@@ -1,0 +1,75 @@
+-- Locales.lua — basic localization scaffolding (Classic/Turtle, Lua 5.0)
+-- UPDATED: 11 Aug 2025
+
+
+KaChing         = KaChing or {}
+KaChing.Locales = KaChing.Locales or {}   -- ✅ create the locales table
+local L         = KaChing.Locales               -- ✅ alias for convenience
+
+local LOCALE = (GetLocale and GetLocale()) and GetLocale() or "enUS"
+local isEN = (LOCALE == "enUS") or (LOCALE == "enGB")
+
+local addonName, addonVersion, addonExpansionName = KaChing.Core:getAddonInfo()
+
+-- ---- English (default) strings ----
+local defaults = {
+    -- General / UI
+    OPTIONS_TITLE      = "KaChing Options",
+    EXCL_TITLE         = "Exclusion List",
+    EXCL_EDIT_TIP      = "Drag and drop item here to add it to the list of excluded items (for example, your mining pick and/or fishing pole).",
+    EXCL_ADD           = "Add",      -- kept for completeness (not currently used)
+    EXCL_REMOVE        = "Remove",
+    EXCL_CLEAR         = "Clear exclusion list of all items",
+    ADDON_LOADED_MESSAGE = string.format("%s %s loaded (%s)", addonName, addonVersion, addonExpansionName),
+
+    -- Checkbox
+    OPT_SELL_WHITE_AW  = "Sell white armor & weapons",
+    TIP_SELL_WHITE_AW  = "If checked, all white armor and weapon items will be sold.",
+
+    -- Minimap
+    KACHING_MINIMAP_TIP = "Left-click: Options • Drag: Move",
+
+    -- Selling summary
+    SOLD_SUMMARY       = "KaChing: Sold %d item(s) for %dg %ds %dc.",
+    SOLD_NOTHING       = "KaChing: Nothing to sell.",
+
+    -- Class/quality cues (used for detection & tooltip scanning)
+    ARMOR              = "Armor",
+    WEAPON             = "Weapon",
+}
+
+-- Apply English strings for enUS/enGB explicitly
+if isEN then
+    local k, v
+    for k, v in pairs(defaults) do
+        L[k] = v
+    end
+end
+
+-- ---- Other locales go here (override only what differs) ----
+-- Example (German):
+-- if LOCALE == "deDE" then
+--     L.OPTIONS_TITLE      = "KaChing-Optionen"
+--     L.EXCL_TITLE         = "Ausschlussliste"
+--     L.OPT_SELL_WHITE_AW  = "Weiße Rüstungen & Waffen verkaufen"
+--     L.TIP_SELL_WHITE_AW  = "Wenn aktiviert, werden alle weißen Rüstungs- und Waffen-Gegenstände verkauft."
+--     L.KACHING_MINIMAP_TIP= "Links-Klick: Optionen • Ziehen: Bewegen"
+--     L.SOLD_SUMMARY       = "KaChing: %d Gegenstand/Gegenstände für %dg %ds %dc verkauft."
+--     L.SOLD_NOTHING       = "KaChing: Nichts zu verkaufen."
+--     L.ARMOR              = "Rüstung"
+--     L.WEAPON             = "Waffe"
+-- end
+
+-- ---- Fallback: ensure every required key is defined ----
+do
+    local k, v
+    for k, v in pairs(defaults) do
+        if L[k] == nil then
+            L[k] = v  -- fall back to English for missing translations
+        end
+    end
+end
+
+if KaChing.Core and KaChing.Core.debuggingIsEnabled and KaChing.Core.debuggingIsEnabled() then
+    DEFAULT_CHAT_FRAME:AddMessage("Locales.lua loaded", 1, 1, 0.5)
+end

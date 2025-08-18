@@ -1,26 +1,31 @@
 -- OptionsMenu.lua — KaChing Options + Exclusion List (Classic/TWOW Lua 5.0)
--- UPDATED: 11 August, 2025 (aligned layout + tooltip input, no Add button, Safe.lua integration)
+-- UPDATED: 11 August, 2025 (Lua 5.0 safe; uses Safe.lua cursor helpers; aligned layout)
+
+--[[ PROGRAMMING NOTES:
+Turtle WoW AddOns are implemented in Lua 5.0:
+- No string.match, use string.find or string.gfind
+- No goto or select()
+- _G is not available, use getglobal() or setfenv(0)
+- # is not available:
+  * Use table.getn(t) instead of #t
+- Use modulo instead of x % y in some edge macros
+- Use tinsert(t, v) instead of table.insert(t, v)
+- Frame script handlers use 'this' (not 'self')
+]]
 
 KaChing = KaChing or {}
-KaChing.OptionsMenu = KaChing.OptionsMenu or {}
+KaChing.OptionsMenu = {} or {}
 
-local options = KaChing.OptionsMenu
-local core    = KaChing.Core
-local dbg     = KaChing.DebugTools
-local L       = KaChing.L or {}
-local safe    = KaChing.Safe or {}   -- Safe.lua wrappers
+local options = KaChing.OptionsMenu 
+local L = KaChing.Locales
+local core = KaChing.Core
+local dbg = KaChing.Debug
+local safe = KaChing.Safe-- Safe.lua helpers (cursor, item name, etc.)
 
 -- Per-character SVs (declared in TOC; MUST be space-separated)
-KACHING_SAVED_OPTIONS     = KACHING_SAVED_OPTIONS or {}
-KaChing_ExcludedItemsList = KaChing_ExcludedItemsList or {}   -- map[nameLower] = true
-KaChing.ExclusionList     = KaChing.ExclusionList or {}       -- runtime map (SellItems.lua uses)
-
--- ---------- debug helper ----------
-local function dprint(msg)
-    if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
-        if dbg and dbg.print then dbg:print(msg) end
-    end
-end
+KACHING_SAVED_OPTIONS     = KACHING_SAVED_OPTIONS 
+KaChing_ExcludedItemsList = KaChing_ExcludedItemsList    -- map[nameLower] = true
+KaChing.ExclusionList     = KaChing.ExclusionList        -- runtime map (SellItems.lua uses)
 
 -- ---------- SV guards ----------
 local function ensureSavedVars()
@@ -74,7 +79,7 @@ local function buildSortedNames()
     local arr = {}
     local k, v
     for k, v in pairs(KaChing_ExcludedItemsList) do
-        if v then table.insert(arr, k) end
+        if v then tinsert(arr, k) end
     end
     table.sort(arr)
     return arr
@@ -106,6 +111,7 @@ local function refreshList()
     local offset = FauxScrollFrame_GetOffset(KaChing_Excl_Scroll) or 0
     local total  = table.getn(options._sorted)
 
+    local i
     for i = 1, ROWS do
         local idx = i + offset
         local row = options._rows[i]
@@ -190,8 +196,10 @@ local function createFrameOnce()
     cb:SetChecked(KACHING_SAVED_OPTIONS.sellWhiteAW and 1 or 0)
     cb:SetScript("OnClick", function()
         KACHING_SAVED_OPTIONS.sellWhiteAW = (this:GetChecked() and true or false)
-        dprint("sellWhiteAW set to: "..tostring(KACHING_SAVED_OPTIONS.sellWhiteAW))
+        local msg = L["MSG_SELL_WHITE_AW"] or "Sell white armor & weapons set to: "
+        if dbg and dbg.print then dbg:print(msg) end
     end)
+
 
     -- === Exclusion List header ===
     local exclTitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -230,44 +238,10 @@ local function createFrameOnce()
     end)
     edit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
-    -- Accept item drop
-    edit:SetScript("OnReceiveDrag", function()
-        local ctype, p1, p2 = safe.GetCursorInfo()
-        local nameLower = nil
-        if ctype == "item" then
-            nameLower = linkToNameLower(p2) or normalizeName(p1)
-        end
-        if nameLower then
-            addToExclusion(nameLower)
-            this:SetText("")
-            options._selectedIndex = nil
-            refreshList()
-            if ClearCursor then ClearCursor() end
-            dprint("Excluded: "..nameLower)
-        else
-            if ClearCursor then ClearCursor() end
-        end
-    end)
+    -- Accept item drop (1.12: use Safe.lua helpers; no GetCursorInfo)
+    -- Use the new bag-only drop handler
+    options.AttachExclusionDrop(edit)
 
-    -- Click-in with item on cursor also adds
-    edit:SetScript("OnMouseUp", function()
-        if CursorHasItem and CursorHasItem() then
-            local ctype, p1, p2 = safe.GetCursorInfo()
-            local nameLower = nil
-            if ctype == "item" then
-                nameLower = linkToNameLower(p2) or normalizeName(p1)
-            end
-            if nameLower then
-                addToExclusion(nameLower)
-                this:SetText("")
-                options._selectedIndex = nil
-                refreshList()
-                if ClearCursor then ClearCursor() end
-                dprint("Excluded: "..nameLower)
-                return
-            end
-        end
-    end)
 
     -- Press Enter to manually add (typed name or shift-clicked link)
     edit:SetScript("OnEnterPressed", function()
@@ -278,7 +252,9 @@ local function createFrameOnce()
             this:SetText("")
             options._selectedIndex = nil
             refreshList()
-            dprint("Excluded: "..nameLower)
+            if dbg and dbg.print then dbg:print("Excluded: "..nameLower) end
+            local msg = ("Excluded: "..nameLower)
+            if dbg and dbg.print then dbg:print(msg) end
         end
         this:ClearFocus()
     end)
@@ -305,6 +281,7 @@ local function createFrameOnce()
     end)
 
     -- Rows (buttons for selection)
+    local i
     for i = 1, ROWS do
         local row = options._rows[i] or CreateFrame("Button", "KaChing_Excl_Row"..i, listBG)
         row:SetWidth(LIST_WIDTH - 30); row:SetHeight(16)
@@ -339,7 +316,7 @@ local function createFrameOnce()
             removeFromExclusion(nameLower)
             options._selectedIndex = nil
             refreshList()
-            dprint("Removed: "..nameLower)
+            if dbg and dbg.print then dbg:print("Removed: "..nameLower ) end
         end
     end)
 
@@ -357,12 +334,18 @@ end
 -- Public API used by minimap icon (left-click)
 function options:menuCreate()
     createFrameOnce()
-    dprint("Options frame created")
+    if dbg and dbg.print then dbg:print("Options frame created") end
+    
 end
 
 function options:Toggle()
     createFrameOnce()
     if options.frame:IsShown() then options.frame:Hide() else options.frame:Show() end
+end
+
+-- Optional: let other modules refresh the list after they mutate SVs
+function options:refreshExclusionList()
+    refreshList()
 end
 
 -- Defense-in-depth helpers for external callers
@@ -375,6 +358,109 @@ function options:EnsureReady()
     return options.frame ~= nil
 end
 
-if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
-    DEFAULT_CHAT_FRAME:AddMessage("OptionsMenu.lua is loaded", 1, 1, 0.5)
+-- ======================= KaChing Exclusions (bag-only drop) =======================
+
+KaChing = KaChing or {}
+KaChing.OptionsMenu = KaChing.OptionsMenu or {}
+
+-- Ensure per-character storage exists (SavedVariablesPerCharacter in TOC includes KaChing_ExcludedItemsList)
+local function KM_EnsureExclusionStorage()
+    KaChing_ExcludedItemsList = KaChing_ExcludedItemsList or {}
+    return KaChing_ExcludedItemsList
+end
+
+-- Helper to extract a display name from an item link like |cff..|Hitem:123:..|h[Name]|h|r
+local function KM_NameFromLink(link)
+    if type(link) ~= "string" then return nil end
+    local _, _, name = string.find(link, "%[(.-)%]")
+    return name
+end
+
+-- Add a display name (mixed case) to storage as lowercase key; refresh list UI if available
+local function KM_AddExcludedName(displayName)
+    if not displayName or displayName == "" then return false end
+    local lname = string.lower(displayName)
+
+    -- Keep SVs and runtime map in sync using your existing helpers
+    addToExclusion(lname)
+
+    -- Refresh list UI
+    if options.refreshExclusionList then
+        options:refreshExclusionList()
+    else
+        -- fallback if method isn’t there for some reason
+        refreshList()
+    end
+    return true
+end
+
+-- Main drop handler for the exclusion list target; **bag-only**
+function options.OnExclusionDrop()
+    local kind, itemID, itemLink, bag, slot = safe.GetCursorInfo_BagOnly()
+
+    if not kind then
+        -- Likely dragged from equipped slot; inform without crashing
+        if UIErrorsFrame and UIErrorsFrame.AddMessage then
+            UIErrorsFrame:AddMessage("KaChing: drag items from your bags (not equipped).")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("KaChing: drag items from your bags (not equipped).", 1, 0.2, 0.2)
+        end
+        if CursorHasItem and CursorHasItem() then ClearCursor() end
+        return
+    end
+
+    -- Resolve a human-readable name
+    local name = KM_NameFromLink(itemLink)
+    if (not name or name == "") and bag and slot then
+        -- Tooltip fallback from Safe.lua (returns lower + display); we use display
+        local _lower, display = safe.GetItemNameLower(bag, slot)
+        name = display
+    end
+
+    if not name or name == "" then
+        if UIErrorsFrame and UIErrorsFrame.AddMessage then
+            UIErrorsFrame:AddMessage("KaChing: couldn’t read that item’s name. Try again.")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("KaChing: couldn’t read that item’s name. Try again.", 1, 0.2, 0.2)
+        end
+        if CursorHasItem and CursorHasItem() then ClearCursor() end
+        return
+    end
+
+    if KM_AddExcludedName(name) then
+        DEFAULT_CHAT_FRAME:AddMessage("KaChing: excluded “" .. name .. "”.", 0.9, 0.9, 0.1)
+    else
+        if UIErrorsFrame and UIErrorsFrame.AddMessage then
+            UIErrorsFrame:AddMessage("KaChing: failed to add to exclusions.")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("KaChing: failed to add to exclusions.", 1, 0.2, 0.2)
+        end
+    end
+
+    -- Clear to avoid ghost cursor
+    if CursorHasItem and CursorHasItem() then ClearCursor() end
+end
+
+-- Attach to your exclusion drop target frame
+-- Call this once after you create the frame (e.g., right after you create the list UI).
+function options.AttachExclusionDrop(targetFrame)
+    if not targetFrame then return end
+    targetFrame:EnableMouse(true)
+
+    -- Classic/1.12: OnReceiveDrag is the primary drop path; also handle mouse-up while dragging
+    targetFrame:SetScript("OnReceiveDrag", function()
+        options.OnExclusionDrop()
+    end)
+    targetFrame:SetScript("OnMouseUp", function()
+        if CursorHasItem and CursorHasItem() then
+            options.OnExclusionDrop()
+        end
+    end)
+end
+
+
+-- Optional: debug ping so you can see when this file loads
+-- Optional: debug ping so you can see when this file loads
+if KaChing.Core and KaChing.Core.debuggingIsEnabled and KaChing.Core.debuggingIsEnabled() then
+    DEFAULT_CHAT_FRAME:AddMessage("OptionsMenu.lua loaded", 1, 1, 0.5)
 end

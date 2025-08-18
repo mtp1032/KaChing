@@ -3,7 +3,7 @@
 ## Title: KaChing
 ## Version: 0.9.9
 ## Notes: Supports the bulk sales of items by quality or bound state
-## SavedVariablesPerCharacter: KaChing_ExcludedItemsList KACHING_SAVED_OPTIONS KaChingDB
+## SavedVariablesPerCharacter: KaChing_ExcludedItemsList KACHING_SAVED_OPTIONS
 ## 3 August, 2025
 ## OptionalDeps:
 ## IconTexture: 133785
@@ -14,26 +14,13 @@
 # Required / Prerequisite files  
 #---------------------------------------------
 Core.lua
+Locales.lua
 DebugTools.lua
-KaChingLocales.lua
 Safe.lua
 SellItems.lua
 OptionsMenu.lua
-MiniMapIcon.lua
+MinimapIcon.lua
 EventHandler.lua
-
-
-
-
-
-
-
-
-
-
-
-
-
-## Command.lua
+Command.lua
 
 

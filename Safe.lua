@@ -1,145 +1,117 @@
--- Safe.lua  — Turtle WoW / Lua 5.0 wrappers (no select())
--- ORIGINAL DATE: 10 August, 2025
+--------------------------------------------------------------------------------------
+-- Safe.lua
+-- UPDATED: 13 August, 2025 (TWOW/1.12 shims + pcall wrappers + SellSlot) — Lua 5.0
+-- Notes: no select(), no "..." in locals, use arg1 in OnUpdate, use tinsert
+--------------------------------------------------------------------------------------
 
 KaChing = KaChing or {}
 KaChing.Safe = KaChing.Safe or {}
+local safe  = KaChing.Safe
 
-local safe = KaChing.Safe
+-- Read-only local aliases
 local core = KaChing.Core
 local dbg  = KaChing.DebugTools
-local L    = KaChing.L or {}
-local safe  = KaChing.Safe or {}
 
--- Generic pcall wrapper (returns up to 6 values; extend if you need more)
+-- ============================ pcall helper ============================
+-- Returns: ok:boolean, r1,r2,r3,r4,r5,r6 (Lua 5.0—no select/unpack here)
 local function safeCall(fn, a1,a2,a3,a4,a5,a6)
+    if type(fn) ~= "function" then return false, "no_fn" end
     local ok, r1,r2,r3,r4,r5,r6 = pcall(fn, a1,a2,a3,a4,a5,a6)
-    if not ok then
-        if dbg and dbg.print then dbg:print("API error:", tostring(r1)) end
-        return nil, "error", r1
+    if not ok and dbg and dbg.print then
+        dbg:print("API error:", tostring(r1))
     end
-    return r1,r2,r3,r4,r5,r6
+    return ok, r1,r2,r3,r4,r5,r6
 end
 
--- Bag range: 0..4 on 1.12
-local function valid_bag(bag)
-    return type(bag) == "number" and bag >= 0 and bag <= 4
+-- ============================ Thin wrappers (pcall) ============================
+local function w_GetContainerNumSlots(bag)
+    if type(bag) ~= "number" or bag < 0 or bag > 4 then return 0 end
+    local ok, n = safeCall(GetContainerNumSlots, bag)
+    return (ok and n) or 0
 end
 
--- Normalize locked flags (1/nil → boolean)
-local function norm_locked(v)
-    if v == true or v == false then return v end
-    return (v == 1)
+local function w_GetContainerItemInfo(bag, slot)
+    local ok, t,c,l = safeCall(GetContainerItemInfo, bag, slot)
+    if not ok then return nil, nil, nil end
+    return t,c,l
 end
 
--- ========== Container / Item wrappers ==========
-
-function safe.GetContainerNumSlots(bag)
-    if not valid_bag(bag) then return 0 end
-    local n, tag = safeCall(GetContainerNumSlots, bag)
-    if not n or tag == "error" then return 0 end
-    return n or 0
-end
-
--- Always returns: texture, count, lockedBool
-function safe.GetContainerItemInfo(bag, slot)
-    if not valid_bag(bag) then return nil, 0, false end
-    if type(slot) ~= "number" or slot < 1 then return nil, 0, false end
-    local tex, cnt, locked = safeCall(GetContainerItemInfo, bag, slot)
-    return tex, (cnt or 0), norm_locked(locked)
-end
-
--- May be nil or a bare "[Item Name]" on TWOW
-function safe.GetContainerItemLink(bag, slot)
-    if not valid_bag(bag) then return nil end
-    if type(slot) ~= "number" or slot < 1 then return nil end
-    local link = safeCall(GetContainerItemLink, bag, slot)
+local function w_GetContainerItemLink(bag, slot)
+    local ok, link = safeCall(GetContainerItemLink, bag, slot)
+    if not ok then return nil end
     return link
 end
 
--- Cursor‑safe UseContainerItem
-function safe.UseContainerItem(bag, slot)
-    if CursorHasItem and CursorHasItem() then
-        if ClearCursor then ClearCursor() end
-    end
+local function w_UseContainerItem(bag, slot)
     local ok = safeCall(UseContainerItem, bag, slot)
-    return ok ~= nil
+    return ok
 end
 
--- GetItemInfo (pass through nils without exploding)
-function safe.GetItemInfo(item)
-    return safeCall(GetItemInfo, item)
+local function w_GetNumBuybackItems()
+    local ok, n = safeCall(GetNumBuybackItems)
+    if not ok then return 0 end
+    return n or 0
 end
 
--- Tooltip:SetBagItem (returns true/false)
-function safe.TooltipSetBagItem(tip, bag, slot)
-    if not tip or not tip.ClearLines or not tip.SetBagItem then return false end
-    if not valid_bag(bag) or type(slot) ~= "number" or slot < 1 then return false end
-    local ok = safeCall(tip.SetBagItem, tip, bag, slot)
-    return ok ~= nil
+local function w_CursorHasItem()
+    local ok, has = safeCall(CursorHasItem)
+    return ok and (has and true or false) or false
 end
 
--- Slot occupancy probe
-function safe.SlotOccupied(bag, slot)
-    local tex = safe.GetContainerItemInfo(bag, slot)
-    return tex ~= nil
-end
-
--- Buyback helpers (some UIs throw if called too early)
-function safe.GetNumBuybackItems()
-    local n = safeCall(GetNumBuybackItems)
-    if type(n) ~= "number" then return 0 end
-    return n
-end
-
--- Cursor helpers
-function safe.CursorHasItem()
-    local v = safeCall(CursorHasItem)
-    return v and true or false
-end
-function safe.ClearCursor()
+local function w_ClearCursor()
     safeCall(ClearCursor)
 end
 
--- -- Try to read cursor payload safely (Classic)
--- function safe.GetCursorInfo()
---     local ok, ctype, p1, p2, p3 = safeCall(GetCursorInfo)
---     if not ok then return nil end
---     return ctype, p1, p2, p3
--- end
-
--- === Hidden tooltip for safe name reads ===
-local HIDDEN_TIP_NAME = "KaChing_SafeTip"
-local hiddenTip = getglobal(HIDDEN_TIP_NAME)
-if not hiddenTip then
-    hiddenTip = CreateFrame("GameTooltip", HIDDEN_TIP_NAME, UIParent, "GameTooltipTemplate")
-    hiddenTip:SetOwner(UIParent, "ANCHOR_NONE")
+local function w_GetTime()
+    local ok, t = safeCall(GetTime)
+    return ok and (t or 0) or 0
 end
 
-local function safeTooltipGetFirstLineFromBagItem(bag, slot)
-    if not hiddenTip or not hiddenTip.ClearLines then return nil end
-    hiddenTip:ClearLines()
-    local ok = safe.TooltipSetBagItem and safe.TooltipSetBagItem(hiddenTip, bag, slot)
-    if not ok then return nil end
-    local fs = getglobal(HIDDEN_TIP_NAME.."TextLeft1")
-    if fs and fs.GetText then
-        local text = fs:GetText()
-        if type(text) == "string" and text ~= "" then
-            return text
+-- Public: keep Blizzard-like names for external callers
+function safe.GetContainerNumSlots(bag) 
+    return w_GetContainerNumSlots(bag) 
+end
+
+-- ============================ Name helpers ============================
+-- Extract lower-cased item name via link or tooltip (1.12 safe)
+function safe.GetItemNameLower(bag, slot)
+    local link = w_GetContainerItemLink(bag, slot)
+    if type(link) == "string" then
+        local _, _, name = string.find(link, "%[(.-)%]")
+        if name and name ~= "" then
+            return string.lower(name), name
         end
     end
-    return nil
+
+    -- Tooltip fallback (minimal, 1.12-safe)
+    if not KaChing_SafeScanTip then
+        local tip = CreateFrame("GameTooltip", "KaChing_SafeScanTip", UIParent, "GameTooltipTemplate")
+        tip:SetOwner(UIParent or WorldFrame, "ANCHOR_NONE")
+    end
+    KaChing_SafeScanTip:ClearLines()
+    if KaChing_SafeScanTip.SetBagItem then
+        KaChing_SafeScanTip:SetBagItem(bag, slot)
+        local fs = getglobal("KaChing_SafeScanTipTextLeft1")
+        if fs then
+            local t = fs:GetText()
+            if type(t) == "string" and t ~= "" then
+                return string.lower(t), t
+            end
+        end
+    end
+    return nil, nil
 end
 
--- Try to locate the bag/slot that is currently "picked up" (locked) when dragging
-local function findLockedCursorBagSlot()
+-- ============================ Cursor helpers ============================
+function safe.FindLockedCursorSlot()
     local bag
     for bag = 0, 4 do
-        local slots = safe.GetContainerNumSlots(bag)
-        if slots and slots > 0 then
+        local n = w_GetContainerNumSlots(bag)
+        if n and n > 0 then
             local slot
-            for slot = 1, slots do
-                local tex, cnt, locked = safe.GetContainerItemInfo(bag, slot)
-                if tex and locked then
+            for slot = 1, n do
+                local tex, cnt, locked = w_GetContainerItemInfo(bag, slot)
+                if locked then
                     return bag, slot
                 end
             end
@@ -148,41 +120,136 @@ local function findLockedCursorBagSlot()
     return nil, nil
 end
 
--- Public: Cursor info with Vanilla fallback
+-- Returns: "item", bag, slot, lowerName, displayName, texture OR nil
 function safe.GetCursorInfo()
-    -- Modern path (won’t exist on 1.12, but keep for forward compat)
-    if type(GetCursorInfo) == "function" then
-        local r1, r2, r3, r4 = safeCall(GetCursorInfo)
-        -- safeCall returns (nil,"error",errmsg) on failure; we only care about success case
-        if r1 ~= nil or r2 ~= "error" then
-            -- r1=ctype ("item"|"spell"|...), r2=nameOrID, r3=linkOrRank, r4=extra
-            return r1, r2, r3, r4
-        end
-        return nil
-    end
-
-    -- Vanilla/Turtle fallback: infer from locked bag slot while item is on cursor
-    if safe.CursorHasItem and safe.CursorHasItem() then
-        local bag, slot = findLockedCursorBagSlot()
-        if bag ~= nil and slot ~= nil then
-            -- Prefer a robust name via tooltip (since GetContainerItemLink may be just "[Name]")
-            local name = safeTooltipGetFirstLineFromBagItem(bag, slot)
-            -- Also try the link form (may be "[Name]" on 1.12)
-            local link = safe.GetContainerItemLink and safe.GetContainerItemLink(bag, slot)
-            -- Emulate the modern return shape used by your OptionsMenu.lua:
-            -- ctype="item", p1=name, p2=link (may be nil), p3=nil
-            if name or link then
-                return "item", name, link, nil
-            end
+    if w_CursorHasItem() then
+        local bag, slot = safe.FindLockedCursorSlot()
+        if bag and slot then
+            local lowerName, displayName = safe.GetItemNameLower(bag, slot)
+            local tex = w_GetContainerItemInfo(bag, slot)
+            local texture = (type(tex) == "string") and tex or nil
+            return "item", bag, slot, lowerName, displayName, texture
         end
     end
-
-    -- No payload we can detect
     return nil
 end
 
+-- Provide global alias if missing (older code might call GetCursorInfo())
+if not GetCursorInfo then
+    function GetCursorInfo()
+        return safe.GetCursorInfo()
+    end
+end
 
+-- Helper: extract itemID from item link (Lua 5.0)
+local function KC_Safe_ExtractItemIDFromLink(link)
+    if type(link) ~= "string" then return nil end
+    local _, _, id = string.find(link, "item:(%d+)")
+    if id then return tonumber(id) end
+    return nil
+end
 
+-- Retail-shaped, but **bag-only** (used by Options UI)
+-- Returns: "item", itemID, itemLink, bag, slot  OR  nil, "reason"
+function safe.GetCursorInfo_BagOnly()
+    if not w_CursorHasItem() then
+        if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+            DEFAULT_CHAT_FRAME:AddMessage("Safe:GetCursorInfo_BagOnly(): no_item", 1, 0.4, 0.4)
+        end
+        return nil, "no_item"
+    end
+    local bag, slot = safe.FindLockedCursorSlot()
+    if not bag then
+        if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+            DEFAULT_CHAT_FRAME:AddMessage("Safe:GetCursorInfo_BagOnly(): not_from_bag", 1, 0.4, 0.4)
+        end
+        return nil, "not_from_bag"
+    end
+
+    local link = w_GetContainerItemLink(bag, slot)
+    local itemID = KC_Safe_ExtractItemIDFromLink(link) or 0
+
+    if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("Safe:GetCursorInfo_BagOnly(): ok bag="..bag.." slot="..slot, 0.6, 1, 0.6)
+    end
+
+    return "item", itemID, link, bag, slot
+end
+
+-- ============================ Selling (pcall + timing) ============================
+-- onDone(sold:boolean, reason:string)
+-- opts = { timeout_sec = 0.35, max_retries = 1 }
+function safe.SellSlot(bag, slot, onDone, opts)
+    local timeout     = (opts and opts.timeout_sec) or 0.35
+    local max_retries = (opts and opts.max_retries) or 0
+    local tries       = 0
+
+    local f = CreateFrame("Frame")
+    local elapsed = 0
+    local state = "issue"   -- "issue" -> UseContainerItem; "wait" -> watch disappearance
+
+    local function done(sold, reason)
+        f:SetScript("OnUpdate", nil)
+        f:Hide()
+        if onDone then
+            local ok = pcall(onDone, sold, reason)
+            if not ok and dbg and dbg.print then dbg:print("safe.SellSlot onDone error") end
+        end
+    end
+
+    f:SetScript("OnUpdate", function()
+        local dt = arg1 or 0
+        elapsed = elapsed + dt
+
+        -- NEW (honors opts.ignore_buyback):
+        if not (opts and opts.ignore_buyback) and w_GetNumBuybackItems() >= 12 then
+            done(false, "buyback_full")
+            return
+        end
+
+        -- Clear ghost cursor if present
+        if w_CursorHasItem() then
+            w_ClearCursor()
+            return
+        end
+
+        local tex, cnt, locked = w_GetContainerItemInfo(bag, slot)
+
+        if state == "issue" then
+            if not tex then done(true, "already_empty"); return end
+            if locked then return end
+
+            if not w_UseContainerItem(bag, slot) then
+                done(false, "use_error")
+                return
+            end
+            state = "wait"
+            elapsed = 0
+            return
+        end
+
+        -- state == "wait": did the item leave the slot?
+        tex, cnt, locked = w_GetContainerItemInfo(bag, slot)
+        if not tex then
+            done(true, "sold")
+            return
+        end
+
+        if elapsed >= timeout then
+            tries = tries + 1
+            if tries > max_retries then
+                done(false, "timeout")
+            else
+                state = "issue"
+                elapsed = 0
+            end
+        end
+    end)
+
+    f:Show()
+end
+
+-- ============================ Debug ping ============================
 if core and core.debuggingIsEnabled and core:debuggingIsEnabled() then
-    DEFAULT_CHAT_FRAME:AddMessage("Safe.lua is loaded", 1, 1, 0.5)
+    DEFAULT_CHAT_FRAME:AddMessage("Safe.lua loaded", 1, 1, 0.5)
 end
