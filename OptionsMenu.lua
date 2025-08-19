@@ -1,5 +1,5 @@
 -- OptionsMenu.lua — KaChing Options + Exclusion List (Classic/TWOW Lua 5.0)
--- UPDATED: 11 August, 2025 (Lua 5.0 safe; uses Safe.lua cursor helpers; aligned layout)
+-- UPDATED: 18 August, 2025 (adds EXCL Clear button; Lua 5.0 safe)
 
 --[[ PROGRAMMING NOTES:
 Turtle WoW AddOns are implemented in Lua 5.0:
@@ -62,6 +62,18 @@ local function removeFromExclusion(nameLower)
     ensureSavedVars()
     KaChing_ExcludedItemsList[nameLower] = nil
     KaChing.ExclusionList[nameLower]     = nil
+end
+
+-- NEW: wipe all exclusions in-place to preserve table references elsewhere
+local function clearAllExclusions()
+    ensureSavedVars()
+    local k,_
+    for k,_ in pairs(KaChing_ExcludedItemsList) do
+        KaChing_ExcludedItemsList[k] = nil
+    end
+    for k,_ in pairs(KaChing.ExclusionList) do
+        KaChing.ExclusionList[k] = nil
+    end
 end
 
 -- Seed runtime map from saved (carry over any existing defaults too)
@@ -319,6 +331,44 @@ local function createFrameOnce()
             if dbg and dbg.print then dbg:print("Removed: "..nameLower ) end
         end
     end)
+    -- Tooltip for Remove button
+    remBtn:SetScript("OnEnter", function()
+        if not GameTooltip or not this then return end
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText(L["EXCL_REMOVE_TIP"] or "Select item and click to remove it.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    remBtn:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    -- === Clear button (beneath Remove) ===
+    local clrBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    clrBtn:SetWidth(80); clrBtn:SetHeight(22)
+    clrBtn:ClearAllPoints()
+    clrBtn:SetPoint("TOPLEFT", remBtn, "BOTTOMLEFT", 0, -GAP_Y)
+    clrBtn:SetText("Clear")
+    clrBtn:SetScript("OnClick", function()
+        -- Wipe both SV and runtime maps in place
+        clearAllExclusions()
+        options._selectedIndex = nil
+        refreshList()
+        if UIErrorsFrame and UIErrorsFrame.AddMessage then
+            UIErrorsFrame:AddMessage("KaChing: exclusion list cleared.")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("KaChing: exclusion list cleared.", 0.9, 0.9, 0.1)
+        end
+    end)
+    clrBtn:SetScript("OnEnter", function()
+    if not GameTooltip or not this then return end
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText(L["EXCL_CLEAR_TIP"] or "Click to clear exclusion list of all items.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+
+    clrBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
     -- Auto-refresh list whenever the options window is shown
     f:SetScript("OnShow", function()
@@ -459,7 +509,6 @@ function options.AttachExclusionDrop(targetFrame)
 end
 
 
--- Optional: debug ping so you can see when this file loads
 -- Optional: debug ping so you can see when this file loads
 if KaChing.Core and KaChing.Core.debuggingIsEnabled and KaChing.Core.debuggingIsEnabled() then
     DEFAULT_CHAT_FRAME:AddMessage("OptionsMenu.lua loaded", 1, 1, 0.5)

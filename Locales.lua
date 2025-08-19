@@ -19,7 +19,9 @@ local defaults = {
     EXCL_EDIT_TIP      = "Drag and drop item here to add it to the list of excluded items (for example, your mining pick and/or fishing pole).",
     EXCL_ADD           = "Add",      -- kept for completeness (not currently used)
     EXCL_REMOVE        = "Remove",
-    EXCL_CLEAR         = "Clear exclusion list of all items",
+    EXCL_REMOVE_TIP    = "Select item and click to remove it.",
+    EXCL_CLEAR         = "Clear",
+    EXCL_CLEAR_TIP     = "Click to clear the exclusion list of all items.",
     ADDON_LOADED_MESSAGE = string.format("%s %s loaded (%s)", addonName, addonVersion, addonExpansionName),
 
     -- Checkbox
@@ -46,21 +48,6 @@ if isEN then
     end
 end
 
--- ---- Other locales go here (override only what differs) ----
--- Example (German):
--- if LOCALE == "deDE" then
---     L.OPTIONS_TITLE      = "KaChing-Optionen"
---     L.EXCL_TITLE         = "Ausschlussliste"
---     L.OPT_SELL_WHITE_AW  = "Weiße Rüstungen & Waffen verkaufen"
---     L.TIP_SELL_WHITE_AW  = "Wenn aktiviert, werden alle weißen Rüstungs- und Waffen-Gegenstände verkauft."
---     L.KACHING_MINIMAP_TIP= "Links-Klick: Optionen • Ziehen: Bewegen"
---     L.SOLD_SUMMARY       = "KaChing: %d Gegenstand/Gegenstände für %dg %ds %dc verkauft."
---     L.SOLD_NOTHING       = "KaChing: Nichts zu verkaufen."
---     L.ARMOR              = "Rüstung"
---     L.WEAPON             = "Waffe"
--- end
-
--- ---- Fallback: ensure every required key is defined ----
 do
     local k, v
     for k, v in pairs(defaults) do
