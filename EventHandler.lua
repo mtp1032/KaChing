@@ -77,6 +77,8 @@ frame:SetScript("OnEvent", function()
 
     if e == "MERCHANT_SHOW" then
         MERCHANT_IS_OPEN = true
+        sell.createKaChingButton()
+        if sell.SetButtonEnabled then sell.SetButtonEnabled(true) end
         EARNED_MONEY = GetMoney()
 
         -- Re-resolve to avoid any staleness if load order ever changes
@@ -101,6 +103,7 @@ frame:SetScript("OnEvent", function()
 
     if e == "MERCHANT_CLOSED" then
         MERCHANT_IS_OPEN = false
+        if sell.SetButtonEnabled then sell.SetButtonEnabled(false) end
         local moneyMade = GetMoney() - (EARNED_MONEY or 0)
         local earnedMoney = formatMoney(moneyMade)
 
