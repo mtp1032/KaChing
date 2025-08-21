@@ -1,6 +1,6 @@
 -- SellItems.lua (Turtle/1.12, Lua 5.0)
 -- SIMPLIFIED BATCH SELLER (up to 12 per click; continues on next click)
--- UPDATED: 19 August, 2025
+-- UPDATED: 21 August, 2025 (post-batch queue rebuild + button state fixes)
 
 --[[ Lua 5.0 notes:
 - No string.match; use string.find / string.gfind
@@ -168,9 +168,7 @@ function sell.wantSell(bag, slot)
     local link = GetContainerItemLink(bag, slot)
     if isGrayByLink(link) then return true, "(gray)" end
 
-    local name, isWhite, slotText
-    -- read name via tooltip
-    name = tooltipNameLower(bag, slot)
+    local name = tooltipNameLower(bag, slot)
     -- exclusion check (use both explicit and runtime maps)
     if name and (KaChing_ExcludedItemsList[name] or KaChing.ExclusionList[name]) then
         return false
@@ -243,6 +241,9 @@ function sell.sellItems()
         return
     end
 
+    -- reset per-click batch counter (future-proof if you cap elsewhere)
+    sell._soldThisRun = 0
+
     buildQueueIfNeeded()
     local total = table.getn(sell._queue or {})
     if total == 0 then
@@ -262,17 +263,32 @@ function sell.sellItems()
             for i = 1, processed do
                 table.remove(sell._queue, 1)
             end
+
+            -- If queue looks empty now, rebuild once to catch items that were locked/uncached earlier
+            if not sell._queue or sell._queue[1] == nil then
+                sell._queue = {}
+                buildQueueIfNeeded()
+            end
+
             local gain = GetMoney() - (moneyStart or 0)
             if gain > 0 then
                 logInfo("[KaChing] Sold "..processed.." item(s). Gold gained: "..formatMoney(gain))
             end
-            -- DO NOT disable here; only disable if queue is empty (we check below)
-            -- defer a half-second-ish to let buyback settle, then update button state
+
+            -- delayed toggle after buyback/UI settles
             local f = CreateFrame("Frame"); local t = 0
             f:SetScript("OnUpdate", function()
                 t = t + (arg1 or 0)
                 if t >= 0.5 then
                     f:SetScript("OnUpdate", nil)
+                    f:Hide()
+
+                    -- One more opportunistic rebuild in case timing was tight
+                    if not sell._queue or sell._queue[1] == nil then
+                        sell._queue = {}
+                        buildQueueIfNeeded()
+                    end
+
                     if not sell._queue or sell._queue[1] == nil then
                         sell.SetButtonEnabled(false)
                     else
@@ -280,6 +296,7 @@ function sell.sellItems()
                     end
                 end
             end)
+            f:Show()
             return
         end
 
@@ -288,7 +305,6 @@ function sell.sellItems()
         if not job then processed = processed - 1; return proceed() end
 
         -- Sell a single slot, then continue next frame
-        -- (Use your Safe.lua helper if available; otherwise UseContainerItem)
         local function afterOne()
             local f = CreateFrame("Frame")
             f:SetScript("OnUpdate", function()
@@ -301,8 +317,9 @@ function sell.sellItems()
         if safe and safe.SellSlot then
             safe.SellSlot(job.bag, job.slot, afterOne, { timeout_sec = 0.35, max_retries = 1 })
         else
-            -- fallback
+            ClearCursor()
             UseContainerItem(job.bag, job.slot)
+            ClearCursor()
             afterOne()
         end
     end
@@ -331,6 +348,14 @@ function sell.createKaChingButton()
             t = t + (arg1 or 0)
             if t >= 0.5 then
                 f:SetScript("OnUpdate", nil)
+                f:Hide()
+
+                -- Opportunistic rebuild when queue appears empty
+                if not sell._queue or sell._queue[1] == nil then
+                    sell._queue = {}
+                    buildQueueIfNeeded()
+                end
+
                 if not sell._queue or sell._queue[1] == nil then
                     button:Disable()
                 else
@@ -338,6 +363,7 @@ function sell.createKaChingButton()
                 end
             end
         end)
+        f:Show()
     end)
 
     -- Tooltip
