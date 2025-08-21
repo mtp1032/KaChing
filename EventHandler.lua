@@ -1,125 +1,123 @@
 -- EventHandler.lua
--- UPDATED: 13 August, 2025 (align Locales; keep existing semantics + minimap create)
+-- UPDATED: 21 Aug 2025 (dedupe MERCHANT_SHOW; correct L; clean earnings/session)
 
-KaChing = KaChing or {}                      -- addon namespace
+KaChing = KaChing or {}
 KaChing.EventHandler = KaChing.EventHandler or {}
-local ev = KaChing.EventHandler              -- this module
 
--- Don’t freeze references to other modules yet; declare locals…
-local core, L, dbg, safe, sell, options, mm
+local core  = KaChing.Core or {}
+local dbg   = KaChing.DebugTools or {}
+local L     = KaChing.L or {}               -- ✅ use the canonical locales table
+local sell  = KaChing.SellItems or {}
 
-local function bindModules()
-    core    = KaChing.Core
-    L       = KaChing.Locales                -- ✅ aligned: use the single canonical name
-    dbg     = KaChing.DebugTools
-    safe    = KaChing.Safe
-    sell    = KaChing.SellItems
-    options = KaChing.OptionsMenu
-    mm      = KaChing.MinimapIcon            -- keep your chosen name consistent project-wide
-    ev      = KaChing.EventHandler
-end
+-- Track merchant state + earnings for one session
+local MERCHANT_IS_OPEN = false
 
--- Pretty-print copper as "Xg Ys Zc"
+-- These track a single “merchant session” and prevent duplicate close prints
+KaChing._merchantSessionId    = KaChing._merchantSessionId or 0
+KaChing._merchantMoneyStart   = KaChing._merchantMoneyStart or nil
+KaChing._printedCloseEarnings = KaChing._printedCloseEarnings or nil
+
 local function formatMoney(copper)
-    if type(copper) ~= "number" or copper <= 0 then
-        return "0g 0s 0c"
-    end
+    if type(copper) ~= "number" or copper <= 0 then return "0g 0s 0c" end
     local g = math.floor(copper / 10000)
-    local rem = copper - g * 10000
-    local s = math.floor(rem / 100)
-    local c = rem - s * 100
-
+    local s = math.floor((copper - g * 10000) / 100)
+    local c = copper - g * 10000 - s * 100
     local out = ""
     if g > 0 then out = out .. g .. "g " end
     if s > 0 or g > 0 then out = out .. s .. "s " end
-    out = out .. c .. "c"
-    return out
+    return out .. c .. "c"
 end
 
-local MERCHANT_IS_OPEN = false
-local EARNED_MONEY = 0
+local f = CreateFrame("Frame")
+f:RegisterEvent("ADDON_LOADED")
+f:RegisterEvent("PLAYER_LOGIN")
+f:RegisterEvent("MERCHANT_SHOW")
+f:RegisterEvent("MERCHANT_CLOSED")
+-- Optional in Phase I; keep registered only if you need it:
+-- f:RegisterEvent("BAG_UPDATE")
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("MERCHANT_SHOW")
-frame:RegisterEvent("MERCHANT_CLOSED")
-frame:RegisterEvent("BAG_UPDATE")
-
-frame:SetScript("OnEvent", function()
+f:SetScript("OnEvent", function()
     local e, a1 = event, arg1
 
+    -- Addon bootstrap
     if e == "ADDON_LOADED" and a1 == "KaChing" then
-        bindModules()  -- bind BEFORE using L, core, etc.
-
-        local addonName, addonVersion, addonExpansionName = core:getAddonInfo()
-        local addonLoadedMsg = (L and L.ADDON_LOADED_MESSAGE)
-            or string.format("%s %s loaded (%s)", addonName, addonVersion or "?", addonExpansionName or "?")
-
         if DEFAULT_CHAT_FRAME then
-            DEFAULT_CHAT_FRAME:AddMessage(addonLoadedMsg, 0.0, 1.0, 0.0)
+            DEFAULT_CHAT_FRAME:AddMessage(L["ADDON_LOADED_MESSAGE"] or "KaChing: Addon loaded", 1, 1, 0)
         end
-
-        frame:UnregisterEvent("ADDON_LOADED")
+        f:UnregisterEvent("ADDON_LOADED")
         return
     end
 
     if e == "PLAYER_LOGIN" then
+        -- Safe late-bind of modules that may load after .toc order
+        sell = KaChing.SellItems or sell
         if sell and sell.initializeItemTable then
             sell.initializeItemTable()
-        end
-        -- Create minimap icon once, on login
-        if mm and mm.create then
-            mm:create()
         end
         return
     end
 
+    -- ===== SINGLE, DEDUPED MERCHANT_SHOW =====
     if e == "MERCHANT_SHOW" then
         MERCHANT_IS_OPEN = true
-        sell.createKaChingButton()
-        if sell.SetButtonEnabled then sell.SetButtonEnabled(true) end
-        EARNED_MONEY = GetMoney()
 
-        -- Re-resolve to avoid any staleness if load order ever changes
-        local sell = KaChing.SellItems
-        local dbg  = KaChing.DebugTools
+        -- Start a new merchant session
+        KaChing._merchantSessionId  = (KaChing._merchantSessionId or 0) + 1
+        KaChing._merchantMoneyStart = GetMoney and GetMoney() or 0
+        KaChing._printedCloseEarnings = nil
 
-        if not sell or not (sell.createKaChingButton or sell.CreateKaChingButton) then
-            if dbg and dbg.print then
-                dbg:print("SellItems not ready (create/CreateKaChingButton missing)")
-            end
+        -- Create/ensure the KaChing button (SellItems guards duplicates internally)
+        sell = KaChing.SellItems or sell
+        if not sell or not sell.createKaChingButton then
+            if dbg and dbg.print then dbg:print("SellItems not ready (createKaChingButton missing)") end
             return
         end
+        sell.createKaChingButton()
 
-        -- support either naming
-        if sell.createKaChingButton then
-            sell.createKaChingButton()
-        else
-            sell.CreateKaChingButton(sell)
-        end
+        -- If you have an enable API, call it here (optional)
+        if sell.SetButtonEnabled then sell.SetButtonEnabled(true) end
+
         return
     end
 
     if e == "MERCHANT_CLOSED" then
         MERCHANT_IS_OPEN = false
-        if sell.SetButtonEnabled then sell.SetButtonEnabled(false) end
-        local moneyMade = GetMoney() - (EARNED_MONEY or 0)
-        local earnedMoney = formatMoney(moneyMade)
 
-        -- TODO: Also display this message in a frame where error frames usually appear
-        DEFAULT_CHAT_FRAME:AddMessage(string.format("You earned %s", earnedMoney), 0, 1, 0)   
+        -- One-shot guard per merchant session so we don’t print twice
+        local sid = KaChing._merchantSessionId or 0
+        if KaChing._printedCloseEarnings ~= sid then
+            KaChing._printedCloseEarnings = sid
+
+            local start = KaChing._merchantMoneyStart or 0
+            local now   = GetMoney and GetMoney() or start
+            KaChing._merchantMoneyStart = nil
+
+            local delta = now - start
+            if delta and delta > 0 then
+                local line = "Transaction Completed. Earnings: " .. formatMoney(delta)
+                if UIErrorsFrame and UIErrorsFrame.AddMessage then
+                    UIErrorsFrame:AddMessage(line, 1.0, 0.1, 0.1, nil, 10)  -- fades after ~10s
+                elseif DEFAULT_CHAT_FRAME then
+                    DEFAULT_CHAT_FRAME:AddMessage(line, 1.0, 0.1, 0.1)
+                end
+            end
+        end
+
+        -- Optional: hide/disable button on close (if you expose an API)
+        if sell and sell.hideKaChingButton then sell.hideKaChingButton() end
+        if sell and sell.SetButtonEnabled then sell.SetButtonEnabled(false) end
         return
     end
 
+    -- If you keep BAG_UPDATE in Phase I, gate it behind merchant open
     if e == "BAG_UPDATE" then
         if not MERCHANT_IS_OPEN then return end
-        -- Intentionally a no-op in Phase I.
+        -- no-op in Phase I; handy as a “poke” signal for queues if needed
         return
     end
 end)
 
--- Optional: debug ping so you can see when this file loads
-if KaChing.Core and KaChing.Core.debuggingIsEnabled and KaChing.Core.debuggingIsEnabled() then
-    DEFAULT_CHAT_FRAME:AddMessage("EventHandler.lua loaded", 1, 1, 0.5)
+-- Optional: file-load ping (respects core debug flag)
+if core and core.debuggingIsEnabled and core:debuggingIsEnabled() and DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("EventHandler.lua loaded", 0, 1, 0)
 end
