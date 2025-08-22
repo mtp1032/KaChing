@@ -53,10 +53,8 @@ jobs:
             echo "ADDON_VER=0.0.0" >> "$GITHUB_ENV"
             echo "TOC_PATH=" >> "$GITHUB_ENV"
           else
-            # Extract '## Version: ...' (case-insensitive on the key)
             VER=$(awk 'BEGIN{IGNORECASE=1} /^##[[:space:]]*Version[[:space:]]*:/ {sub(/^[^:]*:[[:space:]]*/,""); print; exit}' "$TOC_PATH")
             [ -z "$VER" ] && VER="0.0.0"
-            # sanitize to safe tag/file chars
             VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
             echo "Detected version: $VER (from $TOC_PATH)"
             echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
@@ -71,7 +69,6 @@ jobs:
           STAGE="dist/KaChing"
           mkdir -p "$STAGE"
 
-          # Whitelist only addon-relevant files/folders into dist/KaChing/
           rsync -av --prune-empty-dirs \
             --include='KaChing.toc' --include='KaChing.TOC' \
             --include='*.lua' --include='*.xml' \
@@ -87,9 +84,7 @@ jobs:
           echo "Staged contents:"
           find dist -maxdepth 3 -type f -print
 
-          # Robust .toc presence test:
-          # 1) Prefer the exact .toc we detected earlier (TOC_PATH)
-          # 2) Fallback: case-insensitive basename check if TOC_PATH wasn't set
+          # Robust .toc presence test
           if [ -n "${TOC_PATH:-}" ]; then
             TOC_BASE="$(basename "$TOC_PATH")"
             if [ ! -f "$STAGE/$TOC_BASE" ]; then
@@ -98,7 +93,6 @@ jobs:
               exit 1
             fi
           else
-            # Case-insensitive glob: KaChing.[Tt][Oo][Cc]
             if ! ls "$STAGE"/KaChing.[Tt][Oo][Cc] >/dev/null 2>&1; then
               echo "ERROR: .toc not found in $STAGE (looked for KaChing.[Tt][Oo][Cc])"
               ls -l "$STAGE" || true
@@ -123,7 +117,6 @@ jobs:
 
           if [ -f VERSION ]; then
             LABEL="$(jq -r '.label // empty' VERSION || true)"
-            # support either "summary" or legacy "notes"
             SUMMARY="$(jq -r '.summary // .notes // empty' VERSION || true)"
             FEATURES="$(jq -r 'if (.features // empty)=="" then "" else (.features|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
             FIXES="$(jq -r 'if (.fixes // empty)=="" then "" else (.fixes   |if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
@@ -133,17 +126,12 @@ jobs:
             THANKS="$(jq -r 'if (.thanks // empty)=="" then "" else (.thanks|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
           fi
 
-          # If no curated lists, include commits since previous tag
           COMMITS=""
           if [ -z "$FEATURES$FIXES$CHANGES" ] && [ -n "$PREV_TAG" ]; then
             COMMITS="$(git log --pretty='- %s (%h)' "${PREV_TAG}..HEAD" || true)"
           fi
 
-          if [ -n "$LABEL" ]; then
-            RELEASE_NAME="${TITLE} (${LABEL})"
-          else
-            RELEASE_NAME="${TITLE}"
-          fi
+          if [ -n "$LABEL" ]; then RELEASE_NAME="${TITLE} (${LABEL})"; else RELEASE_NAME="${TITLE}"; fi
           echo "RELEASE_NAME=$RELEASE_NAME" >> "$GITHUB_ENV"
 
           {
@@ -175,6 +163,16 @@ jobs:
           echo "---- RELEASE_NOTES.md ----"
           sed -n '1,200p' dist/RELEASE_NOTES.md
 
+      # ---- Place notes (and VERSION) inside addon folder (optional) ----
+      # If you want the files shipped INSIDE the KaChing/ folder, keep this step.
+      # Remove this step if you prefer the zip to contain only game files.
+      - name: Add notes/VERSION into KaChing folder (optional)
+        shell: bash
+        run: |
+          set -e
+          cp dist/RELEASE_NOTES.md dist/KaChing/RELEASE_NOTES.txt
+          [ -f VERSION ] && cp VERSION dist/KaChing/VERSION.json || true
+
       # ---- Zip (folder inside = KaChing/) ----
       - name: Package zip
         shell: bash
@@ -186,15 +184,14 @@ jobs:
           echo "ZIP_NAME=$ZIP" >> "$GITHUB_ENV"
 
       # ---- Upload artifact (Actions) ----
-      # (Name has no .zip so GitHub doesn't show .zip.zip when you download the artifact container.)
       - name: Upload artifact (Actions)
         uses: actions/upload-artifact@v4
         with:
           name: KaChing-v${{ env.ADDON_VER }}-release
           path: ${{ env.ZIP_NAME }}
 
-      # ---- Create GitHub Release (with custom notes) ----
-      - name: Create GitHub Release and upload zip
+      # ---- Create GitHub Release (with custom notes & extra asset) ----
+      - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.ADDON_VER }}
@@ -203,4 +200,6 @@ jobs:
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
           make_latest: ${{ inputs.make_latest }}
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_NAME }}
+            dist/RELEASE_NOTES.md
