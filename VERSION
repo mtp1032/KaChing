@@ -3,10 +3,27 @@
   "build": 241,
   "date": "2025-08-22",
   "label": "RC1",
-  "notes": "Release Candidate 1 — 22 August 2025",
-  "changelog": [
-    "First public RC build",
-    "Tooltip-based white gear selling",
-    "Exclusion list honored (case-insensitive)"
+  "summary": "Release Candidate 1 — bulk sales of all gray and white armor and weapon items.",
+  "features": [
+    "Sell white armor/weapons via tooltip detection",
+    "Pause when buyback reaches 12; resume on click"
+  ],
+  "fixes": [
+    "Cursor ghost clears after UseContainerItem",
+    "Handle locked/WAIT states with quick retries"
+  ],
+  "changes": [
+    "Exclusions are case-insensitive exact matches"
+  ],
+  "known_issues": [
+    "Polish pending for buyback resume button state"
+  ],
+  "compat": [
+    "Turtle WoW (Classic 1.12.x / 11200)",
+    "Lua 5.0"
+  ],
+  "thanks": [
+    "Testers in KaChing thread",
+    "Bagshui authors for inspiration"
   ]
 }
