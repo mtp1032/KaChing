@@ -12,11 +12,13 @@ jobs:
   zip:
     runs-on: ubuntu-latest
     steps:
+      # ---- Checkout repo ----
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ---- Ensure tools (zip, jq, rsync) ----
       - name: Ensure tools (zip, jq, rsync)
         shell: bash
         run: |
@@ -24,7 +26,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y zip jq rsync
 
-      # ----- Read version from .TOC (case-insensitive; root or KaChing/) -----
+      # ---- Read version from .TOC (case-insensitive; root or KaChing/) ----
       - name: Read version from .TOC
         id: ver
         shell: bash
@@ -51,7 +53,7 @@ jobs:
           echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
           echo "TOC_PATH=$TOC_PATH" >> "$GITHUB_ENV"
 
-      # ----- Stage addon files only (no git metadata) -----
+      # ---- Stage addon files only (no git metadata) ----
       - name: Stage addon files
         shell: bash
         run: |
@@ -66,20 +68,35 @@ jobs:
             --include='*.blp' --include='*.tga' --include='*.dds' --include='*.mdx' \
             --include='*.mp3' --include='*.ogg' --include='*.wav' \
             --include='README.md' \
-            --include='Media/**' --include='Locales/**' --include='Textures/**' --include='Icons/**' --include='Images/**' --include='Fonts/**' --include='Sound/**' --include='Libs/**' --include='Modules/**' \
+            --include='Media/**' --include='Locales/**' --include='Textures/**' --include='Icons/**' --include='Images/**' \
+            --include='Fonts/**' --include='Sound/**' --include='Libs/**' --include='Modules/**' \
             --include='*/' \
             --exclude='*' \
             ./ "$STAGE/"
 
-          # Ensure the .TOC made it in
-          if ! ls "$STAGE"/KaChing.*OC >/dev/null 2>&1; then
-            echo "ERROR: .TOC not staged into $STAGE"; exit 1
-          fi
-
           echo "Staged contents:"
           find dist -maxdepth 3 -type f -print
 
-      # ----- Compose release notes from VERSION (if present) -----
+          # Robust .toc presence test:
+          # 1) Prefer the exact .toc we detected earlier (TOC_PATH)
+          # 2) Fallback: case-insensitive basename check if TOC_PATH wasn't set
+          if [ -n "${TOC_PATH:-}" ]; then
+            TOC_BASE="$(basename "$TOC_PATH")"
+            if [ ! -f "$STAGE/$TOC_BASE" ]; then
+              echo "ERROR: expected $TOC_BASE in $STAGE but it wasn't found."
+              ls -l "$STAGE" || true
+              exit 1
+            fi
+          else
+            # Case-insensitive glob: KaChing.[Tt][Oo][Cc]
+            if ! ls "$STAGE"/KaChing.[Tt][Oo][Cc] >/dev/null 2>&1; then
+              echo "ERROR: .toc not found in $STAGE (looked for KaChing.[Tt][Oo][Cc])"
+              ls -l "$STAGE" || true
+              exit 1
+            fi
+          fi
+
+      # ---- Compose release notes from VERSION (if present) ----
       - name: Compose release notes
         shell: bash
         run: |
@@ -148,9 +165,9 @@ jobs:
           } > dist/RELEASE_NOTES.md
 
           echo "---- RELEASE_NOTES.md ----"
-          sed -n '1,120p' dist/RELEASE_NOTES.md
+          sed -n '1,160p' dist/RELEASE_NOTES.md
 
-      # ----- Zip (folder inside = KaChing/) -----
+      # ---- Zip (folder inside = KaChing/) ----
       - name: Package zip
         shell: bash
         run: |
@@ -160,13 +177,14 @@ jobs:
           ls -l "$ZIP"
           echo "ZIP_NAME=$ZIP" >> "$GITHUB_ENV"
 
+      # ---- Upload artifact (Actions) ----
       - name: Upload artifact (Actions)
         uses: actions/upload-artifact@v4
         with:
           name: KaChing-v${{ env.ADDON_VER }}-release.zip
           path: ${{ env.ZIP_NAME }}
 
-      # ----- Create GitHub Release (prerelease) with custom notes -----
+      # ---- Create GitHub Release (prerelease) with custom notes ----
       - name: Create GitHub Release and upload zip
         uses: softprops/action-gh-release@v2
         with:
