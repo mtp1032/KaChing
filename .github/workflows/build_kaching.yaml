@@ -1,9 +1,20 @@
 name: Build KaChing release zip
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Publish as prerelease?"
+        type: boolean
+        default: true
+      draft:
+        description: "Create as draft?"
+        type: boolean
+        default: false
+      make_latest:
+        description: "Mark as latest?"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,17 +52,16 @@ jobs:
             echo "No .TOC found; defaulting to 0.0.0"
             echo "ADDON_VER=0.0.0" >> "$GITHUB_ENV"
             echo "TOC_PATH=" >> "$GITHUB_ENV"
-            exit 0
+          else
+            # Extract '## Version: ...' (case-insensitive on the key)
+            VER=$(awk 'BEGIN{IGNORECASE=1} /^##[[:space:]]*Version[[:space:]]*:/ {sub(/^[^:]*:[[:space:]]*/,""); print; exit}' "$TOC_PATH")
+            [ -z "$VER" ] && VER="0.0.0"
+            # sanitize to safe tag/file chars
+            VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
+            echo "Detected version: $VER (from $TOC_PATH)"
+            echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
+            echo "TOC_PATH=$TOC_PATH" >> "$GITHUB_ENV"
           fi
-
-          # Extract '## Version: ...' (case-insensitive on the key)
-          VER=$(awk 'BEGIN{IGNORECASE=1} /^##[[:space:]]*Version[[:space:]]*:/ {sub(/^[^:]*:[[:space:]]*/,""); print; exit}' "$TOC_PATH")
-          [ -z "$VER" ] && VER="0.0.0"
-          # sanitize to safe tag/file chars
-          VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
-          echo "Detected version: $VER (from $TOC_PATH)"
-          echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
-          echo "TOC_PATH=$TOC_PATH" >> "$GITHUB_ENV"
 
       # ---- Stage addon files only (no git metadata) ----
       - name: Stage addon files
@@ -96,29 +106,37 @@ jobs:
             fi
           fi
 
-      # ---- Compose release notes from VERSION (if present) ----
-      - name: Compose release notes
+      # ---- Compose release notes (from VERSION if present) ----
+      - name: Compose release notes (from VERSION if present)
         shell: bash
         run: |
           set -e
           mkdir -p dist
 
           TITLE="KaChing v${ADDON_VER}"
-          LABEL=""
-          NOTES=""
-          CHANGELOG=""
-          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
           DATE_UTC="$(date -u +%Y-%m-%d)"
+          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+
+          # Defaults
+          LABEL=""; SUMMARY=""; FEATURES=""; FIXES=""; CHANGES=""
+          KNOWN=""; COMPAT=""; THANKS=""
 
           if [ -f VERSION ]; then
             LABEL="$(jq -r '.label // empty' VERSION || true)"
-            NOTES="$(jq -r '.notes // empty' VERSION || true)"
-            CHANGELOG="$(jq -r '
-              if (.changelog // empty) == "" then ""
-              else
-                (.changelog | if type=="array" then map("- " + .) | join("\n") else "- " + tostring(.) end)
-              end
-            ' VERSION || true)"
+            # support either "summary" or legacy "notes"
+            SUMMARY="$(jq -r '.summary // .notes // empty' VERSION || true)"
+            FEATURES="$(jq -r 'if (.features // empty)=="" then "" else (.features|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+            FIXES="$(jq -r 'if (.fixes // empty)=="" then "" else (.fixes   |if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+            CHANGES="$(jq -r 'if (.changes // empty)=="" then "" else (.changes|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+            KNOWN="$(jq -r 'if (.known_issues // empty)=="" then "" else (.known_issues|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+            COMPAT="$(jq -r 'if (.compat // empty)=="" then "" else (.compat|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+            THANKS="$(jq -r 'if (.thanks // empty)=="" then "" else (.thanks|if type=="array" then map("- "+.)|join("\n") else "- "+tostring(.) end) end' VERSION || true)"
+          fi
+
+          # If no curated lists, include commits since previous tag
+          COMMITS=""
+          if [ -z "$FEATURES$FIXES$CHANGES" ] && [ -n "$PREV_TAG" ]; then
+            COMMITS="$(git log --pretty='- %s (%h)' "${PREV_TAG}..HEAD" || true)"
           fi
 
           if [ -n "$LABEL" ]; then
@@ -128,44 +146,34 @@ jobs:
           fi
           echo "RELEASE_NAME=$RELEASE_NAME" >> "$GITHUB_ENV"
 
-          COMMITS=""
-          if [ -n "$PREV_TAG" ]; then
-            COMMITS="$(git log --pretty='- %s (%h)' "${PREV_TAG}..HEAD" || true)"
-          fi
-
           {
             echo "# ${RELEASE_NAME}"
             echo
             echo "_Build date:_ ${DATE_UTC}"
             echo
-            [ -n "$NOTES" ] && { echo "$NOTES"; echo; }
-            if [ -n "$CHANGELOG" ]; then
-              echo "## Changes"
-              echo "$CHANGELOG"
-              echo
-            fi
-            if [ -n "$COMMITS" ]; then
-              echo "## Commits since ${PREV_TAG}"
-              echo "$COMMITS"
-              echo
-            fi
+            [ -n "$SUMMARY" ] && { echo "$SUMMARY"; echo; }
+            [ -n "$FEATURES" ] && { echo "## Features"; echo "$FEATURES"; echo; }
+            [ -n "$FIXES" ]    && { echo "## Fixes";    echo "$FIXES";    echo; }
+            [ -n "$CHANGES" ]  && { echo "## Changes";  echo "$CHANGES";  echo; }
+            [ -n "$COMMITS" ]  && { echo "## Commits since ${PREV_TAG}"; echo "$COMMITS"; echo; }
             echo "## Compatibility"
-            echo "- Turtle WoW (Classic 1.12.x / 11200)"
-            echo "- Lua 5.0"
+            if [ -n "$COMPAT" ]; then
+              echo "$COMPAT"
+            else
+              echo "- Turtle WoW (Classic 1.12.x / 11200)"
+              echo "- Lua 5.0"
+            fi
             echo
             echo "## Installation"
             echo "1. Download the zip attached below."
             echo "2. Unzip so the folder **KaChing/** sits in your \`Interface/AddOns/\` directory."
             echo "3. Restart the client or type \`/reload\`."
-            echo
-            echo "## Notes"
-            echo "- Bulk-sells gray items; optional white armor/weapons."
-            echo "- Honors exclusion list by exact item name (case-insensitive)."
-            echo "- Pauses at 12 buyback items; click the button to continue after freeing buyback slots."
+            [ -n "$KNOWN" ] && { echo; echo "## Known Issues"; echo "$KNOWN"; }
+            [ -n "$THANKS" ] && { echo; echo "## Thanks"; echo "$THANKS"; }
           } > dist/RELEASE_NOTES.md
 
           echo "---- RELEASE_NOTES.md ----"
-          sed -n '1,160p' dist/RELEASE_NOTES.md
+          sed -n '1,200p' dist/RELEASE_NOTES.md
 
       # ---- Zip (folder inside = KaChing/) ----
       - name: Package zip
@@ -178,20 +186,21 @@ jobs:
           echo "ZIP_NAME=$ZIP" >> "$GITHUB_ENV"
 
       # ---- Upload artifact (Actions) ----
+      # (Name has no .zip so GitHub doesn't show .zip.zip when you download the artifact container.)
       - name: Upload artifact (Actions)
         uses: actions/upload-artifact@v4
         with:
-          name: KaChing-v${{ env.ADDON_VER }}-release.zip
+          name: KaChing-v${{ env.ADDON_VER }}-release
           path: ${{ env.ZIP_NAME }}
 
-      # ---- Create GitHub Release (prerelease) with custom notes ----
+      # ---- Create GitHub Release (with custom notes) ----
       - name: Create GitHub Release and upload zip
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.ADDON_VER }}
           name: ${{ env.RELEASE_NAME }}
           body_path: dist/RELEASE_NOTES.md
-          draft: false
-          prerelease: true
-          make_latest: false
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: ${{ inputs.make_latest }}
           files: ${{ env.ZIP_NAME }}
