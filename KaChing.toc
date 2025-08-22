@@ -2,7 +2,7 @@
 ## -----------------------------------------------------------------------
 ## Title: KaChing
 ## Version: 1.0.0
-## Notes: Supports the bulk sales of items by quality or bound state
+## Notes: Supports the bulk sales of items by quality (poor, common) or bound state
 ## SavedVariablesPerCharacter: KaChing_ExcludedItemsList KACHING_SAVED_OPTIONS
 ## 3 August, 2025
 ## OptionalDeps:
