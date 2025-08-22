@@ -99,7 +99,7 @@ Optional filters for **useless soulbound** items, such as:
 - **“Nothing to sell” but you expected sales?**  
   Items may be excluded, or not classified as armor/weapon; try hovering them—slot lines like “Feet/Chest/Head” indicate armor.
 - **Seeing cursor “ghost” behavior?**  
-  KaChing clears the cursor before/after selling; if it persists for a specific item, please report the exact item name/link.
+  KaChing clears the cursor before/after selling; if it persists for a specific item, please report the exact item name or link.
 
 ## Compatibility
 
