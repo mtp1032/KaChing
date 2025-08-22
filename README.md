@@ -9,8 +9,8 @@
 
 # KaChing
 
-Bulk-sell junk (gray) and, optionally, **white** armor/weapons—fast.  
-This is a from-scratch Classic/Turtle-WoW rewrite of the Retail addon.
+Bulk-sell junk (gray) and, optionally, **white** armor/weapons.  
+This is a from-scratch Classic/Turtle-WoW rewrite of my Retail addon.
 
 ## Table of Contents
 - [KaChing](#kaching)
@@ -35,14 +35,14 @@ This is a from-scratch Classic/Turtle-WoW rewrite of the Retail addon.
 
 - **Sell all poor (gray) items** with one click. (Default)
 - **Optionally** sell **common (white) armor & weapons**.
-- **Exclusion list:** protect specific items (e.g., profession tools such as a pick ax or fixhing pole ofany quality) from being sold.
+- **Exclusion list:** protect specific items (e.g., profession tools such as a pick ax or fishing pole of any quality) from being sold.
 
-KaChing targets Classic 1.12/Turtle WoW (Lua 5.0). It avoids API crashes and tooltip quirks common on private/legacy clients.
+KaChing targets Classic 1.12/Turtle WoW (Lua 5.0).
 
 ## Installation
 
-1. Download the release zip (e.g., `KaChing-v0.9.9-master.zip`).
-2. Unzip; you will get a folder named `KaChing-v0.9.9-master/`.
+1. Download the release zip (e.g., `KaChing-v1.0.0-master.zip`).
+2. Unzip; you will get a folder named `KaChing-v1.0.0-master/`.
 3. **Rename that folder to `KaChing`**.
 4. Move it to your addons directory:
    - `World of Warcraft\Interface\AddOns`
@@ -57,7 +57,7 @@ KaChing targets Classic 1.12/Turtle WoW (Lua 5.0). It avoids API crashes and too
    - Plus **white armor & weapons** *if* that option is enabled
    - **Never** items on your exclusion list
 
-> KaChing does **not** auto-sell on opening a Merchant NPC's frame. In this version—you choose when to sell by pressing the button.
+> KaChing does **not** auto-sell on opening a Merchant NPC's frame. In this version—you choose when to sell by clicking the [KaChing] button.
 
 ## Options
 
