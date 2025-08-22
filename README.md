@@ -95,7 +95,7 @@ Optional filters for **useless soulbound** items, such as:
 ## Troubleshooting
 
 - **White A/W didn’t sell?**  
-  Ensure the **Sell white armor & weapons** option is checked and the item isn’t on the exclusion list.
+  Ensure that the **Sell white armor & weapons** option is checked and the item isn’t on the exclusion list.
 - **“Nothing to sell” but you expected sales?**  
   Items may be excluded, or not classified as armor/weapon; try hovering them—slot lines like “Feet/Chest/Head” indicate armor.
 - **Seeing cursor “ghost” behavior?**  
