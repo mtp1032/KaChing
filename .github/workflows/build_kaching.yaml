@@ -1,67 +1,179 @@
 name: Build KaChing release zip
+
 on:
   push:
     branches: [ main ]
   workflow_dispatch: {}
 
 permissions:
-  contents: write   # needed so we can create Releases & upload assets
+  contents: write
 
 jobs:
   zip:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Read version (VERSION file → .toc fallback)
+      - name: Ensure tools (zip, jq, rsync)
+        shell: bash
+        run: |
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y zip jq rsync
+
+      # ----- Read version from .TOC (case-insensitive; root or KaChing/) -----
+      - name: Read version from .TOC
         id: ver
         shell: bash
         run: |
           set -e
-          VER=""
-          # Prefer VERSION file (e.g., "version": "0.9.9")
-          if [ -f VERSION ]; then
-            VER=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' VERSION | head -n1)
-          fi
-          # Fallback to .toc
-          if [ -z "$VER" ] && [ -f KaChing/KaChing.toc ]; then
-            VER=$(sed -n 's/^##[[:space:]]*Version:[[:space:]]*\(.*\)$/\1/p' KaChing/KaChing.toc | head -n1)
-          fi
-          if [ -z "$VER" ] && [ -f KaChing.toc ]; then
-            VER=$(sed -n 's/^##[[:space:]]*Version:[[:space:]]*\(.*\)$/\1/p' KaChing.toc | head -n1)
-          fi
-          [ -z "$VER" ] && VER="0.0.0"
-          VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
-          echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
-          echo "Detected version: $VER"
+          TOC_PATH=""
+          for p in "KaChing/KaChing.toc" "KaChing/KaChing.TOC" "KaChing.toc" "KaChing.TOC"; do
+            if [ -f "$p" ]; then TOC_PATH="$p"; break; fi
+          done
 
-      - name: Package zip (file has -master; inside folder is KaChing/)
+          if [ -z "$TOC_PATH" ]; then
+            echo "No .TOC found; defaulting to 0.0.0"
+            echo "ADDON_VER=0.0.0" >> "$GITHUB_ENV"
+            echo "TOC_PATH=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # Extract '## Version: ...' (case-insensitive on the key)
+          VER=$(awk 'BEGIN{IGNORECASE=1} /^##[[:space:]]*Version[[:space:]]*:/ {sub(/^[^:]*:[[:space:]]*/,""); print; exit}' "$TOC_PATH")
+          [ -z "$VER" ] && VER="0.0.0"
+          # sanitize to safe tag/file chars
+          VER=$(printf '%s' "$VER" | tr -cd '0-9A-Za-z._-')
+          echo "Detected version: $VER (from $TOC_PATH)"
+          echo "ADDON_VER=$VER" >> "$GITHUB_ENV"
+          echo "TOC_PATH=$TOC_PATH" >> "$GITHUB_ENV"
+
+      # ----- Stage addon files only (no git metadata) -----
+      - name: Stage addon files
         shell: bash
         run: |
           set -e
-          echo "Building KaChing-v${ADDON_VER}-master.zip from $GITHUB_REF_NAME @ $GITHUB_SHA"
-          git archive --format=zip --prefix=KaChing/ \
-            -o "KaChing-v${ADDON_VER}-master.zip" HEAD
-          ls -l
+          STAGE="dist/KaChing"
+          mkdir -p "$STAGE"
 
-      - name: Upload artifact (for Actions run)
+          # Whitelist only addon-relevant files/folders into dist/KaChing/
+          rsync -av --prune-empty-dirs \
+            --include='KaChing.toc' --include='KaChing.TOC' \
+            --include='*.lua' --include='*.xml' \
+            --include='*.blp' --include='*.tga' --include='*.dds' --include='*.mdx' \
+            --include='*.mp3' --include='*.ogg' --include='*.wav' \
+            --include='README.md' \
+            --include='Media/**' --include='Locales/**' --include='Textures/**' --include='Icons/**' --include='Images/**' --include='Fonts/**' --include='Sound/**' --include='Libs/**' --include='Modules/**' \
+            --include='*/' \
+            --exclude='*' \
+            ./ "$STAGE/"
+
+          # Ensure the .TOC made it in
+          if ! ls "$STAGE"/KaChing.*OC >/dev/null 2>&1; then
+            echo "ERROR: .TOC not staged into $STAGE"; exit 1
+          fi
+
+          echo "Staged contents:"
+          find dist -maxdepth 3 -type f -print
+
+      # ----- Compose release notes from VERSION (if present) -----
+      - name: Compose release notes
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist
+
+          TITLE="KaChing v${ADDON_VER}"
+          LABEL=""
+          NOTES=""
+          CHANGELOG=""
+          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          DATE_UTC="$(date -u +%Y-%m-%d)"
+
+          if [ -f VERSION ]; then
+            LABEL="$(jq -r '.label // empty' VERSION || true)"
+            NOTES="$(jq -r '.notes // empty' VERSION || true)"
+            CHANGELOG="$(jq -r '
+              if (.changelog // empty) == "" then ""
+              else
+                (.changelog | if type=="array" then map("- " + .) | join("\n") else "- " + tostring(.) end)
+              end
+            ' VERSION || true)"
+          fi
+
+          if [ -n "$LABEL" ]; then
+            RELEASE_NAME="${TITLE} (${LABEL})"
+          else
+            RELEASE_NAME="${TITLE}"
+          fi
+          echo "RELEASE_NAME=$RELEASE_NAME" >> "$GITHUB_ENV"
+
+          COMMITS=""
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS="$(git log --pretty='- %s (%h)' "${PREV_TAG}..HEAD" || true)"
+          fi
+
+          {
+            echo "# ${RELEASE_NAME}"
+            echo
+            echo "_Build date:_ ${DATE_UTC}"
+            echo
+            [ -n "$NOTES" ] && { echo "$NOTES"; echo; }
+            if [ -n "$CHANGELOG" ]; then
+              echo "## Changes"
+              echo "$CHANGELOG"
+              echo
+            fi
+            if [ -n "$COMMITS" ]; then
+              echo "## Commits since ${PREV_TAG}"
+              echo "$COMMITS"
+              echo
+            fi
+            echo "## Compatibility"
+            echo "- Turtle WoW (Classic 1.12.x / 11200)"
+            echo "- Lua 5.0"
+            echo
+            echo "## Installation"
+            echo "1. Download the zip attached below."
+            echo "2. Unzip so the folder **KaChing/** sits in your \`Interface/AddOns/\` directory."
+            echo "3. Restart the client or type \`/reload\`."
+            echo
+            echo "## Notes"
+            echo "- Bulk-sells gray items; optional white armor/weapons."
+            echo "- Honors exclusion list by exact item name (case-insensitive)."
+            echo "- Pauses at 12 buyback items; click the button to continue after freeing buyback slots."
+          } > dist/RELEASE_NOTES.md
+
+          echo "---- RELEASE_NOTES.md ----"
+          sed -n '1,120p' dist/RELEASE_NOTES.md
+
+      # ----- Zip (folder inside = KaChing/) -----
+      - name: Package zip
+        shell: bash
+        run: |
+          set -e
+          ZIP="KaChing-v${ADDON_VER}-release.zip"
+          ( cd dist && zip -r9 "../$ZIP" "KaChing" )
+          ls -l "$ZIP"
+          echo "ZIP_NAME=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload artifact (Actions)
         uses: actions/upload-artifact@v4
         with:
-          name: KaChing-v${{ env.ADDON_VER }}-master.zip
-          path: KaChing-v{{ env.ADDON_VER }}-master.zip
+          name: KaChing-v${{ env.ADDON_VER }}-release.zip
+          path: ${{ env.ZIP_NAME }}
 
-      - name: Create GitHub Release (and upload zip)
+      # ----- Create GitHub Release (prerelease) with custom notes -----
+      - name: Create GitHub Release and upload zip
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.ADDON_VER }}
-          name: KaChing v${{ env.ADDON_VER }}
-          body: |
-            KaChing v${{ env.ADDON_VER }} snapshot from branch ${{ github.ref_name }}.
-            - Zip filename: KaChing-v${{ env.ADDON_VER }}-master.zip
-            - Folder inside zip: KaChing/
+          name: ${{ env.RELEASE_NAME }}
+          body_path: dist/RELEASE_NOTES.md
           draft: false
-          prerelease: false
-          make_latest: true
-          generate_release_notes: true
-          files: KaChing-v${{ env.ADDON_VER }}-master.zip
+          prerelease: true
+          make_latest: false
+          files: ${{ env.ZIP_NAME }}

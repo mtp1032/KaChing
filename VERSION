@@ -1,1 +1,12 @@
-"version": "0.9.9", "build": 241, "date": "2025-10-10"
+{
+  "version": "1.0.0",
+  "build": 241,
+  "date": "2025-08-22",
+  "label": "RC1",
+  "notes": "Release Candidate 1 — 22 August 2025",
+  "changelog": [
+    "First public RC build",
+    "Tooltip-based white gear selling",
+    "Exclusion list honored (case-insensitive)"
+  ]
+}
