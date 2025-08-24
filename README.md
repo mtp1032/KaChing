@@ -29,7 +29,7 @@ This is a from-scratch Classic/Turtle-WoW rewrite of my Retail addon.
 
 ## Version
 
-**Current:** `0.9.9`
+**Current:** `1.0.0`
 
 ## What it does
 
